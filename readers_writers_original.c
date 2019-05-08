@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <semaphore.h>
 #include <time.h>
+#include "check.h"
 #include <syscall.h>
 
 /* The mutex lock for the writer*/
@@ -14,7 +15,7 @@ of readers*/
 pthread_mutex_t mutex;
 
 /* current number of readers */
-int write_count=0;
+int read_count=0;
 /*shared data*/
 int shared_data=1;
 
@@ -26,41 +27,35 @@ void *reader(void *param);
 
 void *reader(void *param) {
    while(1) {
-		
+		/***Atualiza: read_count***/
         pthread_mutex_lock(&mutex);
+		read_count++;
+		/***O primeiro leitor bloqueia os escritores***/
+		if(read_count==1)
+	      pthread_mutex_lock(&rw_mutex);
+        pthread_mutex_unlock(&mutex);
 		/****LEITURA DO DADO****/
 		printf("\n(%07d) -- read: %05d",syscall(SYS_gettid),shared_data);
-		/***Atualiza: read_count***/
-        pthread_mutex_unlock(&mutex);
         sleep(1);
+		/***Atualiza: read_count***/
+        pthread_mutex_lock(&mutex);
+		read_count--;
+		//O último leitor libera os escritores.
+		if(read_count==0)
+            pthread_mutex_unlock(&rw_mutex);
+        pthread_mutex_unlock(&mutex);
 		//sleep(rand()%10+1);
+		sleep(rand()%3+1);
    }
 }
 void *writer(void *param) {
-	// sleep(1);
-   	while(1) {
-	    pthread_mutex_lock(&rw_mutex);
-	    /***Atualiza: write_count***/
-		write_count++;
-	  	/***O primeiro escritor bloqueia os leitores***/
-		if(write_count==1)
-		    pthread_mutex_lock(&mutex);
-	        pthread_mutex_unlock(&rw_mutex);
-
-	    // incrementa a variavel compartilhada
+	sleep(1);
+   while(1) {
+      pthread_mutex_lock(&rw_mutex);
 		shared_data++;
-		// mostra o novo valor da variavel
 		printf("\n(%07d) -- wrote: %05d",syscall(SYS_gettid),shared_data);
+      pthread_mutex_unlock(&rw_mutex);
 		sleep(1);
-
-		pthread_mutex_lock(&rw_mutex);
-		// tira a thread da fila
-		write_count--;
-		//O último escritor libera os leitores.
-		if(write_count==0)
-            pthread_mutex_unlock(&mutex);
-        	pthread_mutex_unlock(&rw_mutex);
-    	sleep(rand()%3+1);
    }
 }
 
@@ -79,7 +74,7 @@ int main(int argc, char *argv[]) {
    /* Initialize the app */
    pthread_mutex_init(&rw_mutex, NULL);
    pthread_mutex_init(&mutex, NULL);
-   write_count = 0;
+   read_count = 0;
 
    pthread_t * thread  =  malloc ((numWriter+numReader)*sizeof(pthread_t));
    /* Create the writer threads */
